@@ -168,29 +168,6 @@ func (c *Client) fetchData(ctx context.Context, urlPath string, startRFC3339, en
 	return labelResponse.Data, nil
 }
 
-type authRoundTripper struct {
-	accessToken string
-	userToken   string
-	apiKey      string
-	underlying  http.RoundTripper
-}
-
-func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if rt.accessToken != "" && rt.userToken != "" {
-		req.Header.Set("X-Access-Token", rt.accessToken)
-		req.Header.Set("X-Grafana-Id", rt.userToken)
-	} else if rt.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+rt.apiKey)
-	}
-
-	resp, err := rt.underlying.RoundTrip(req)
-	if err != nil {
-		return nil, err
-	}
-
-	return resp, nil
-}
-
 // ListLokiLabelNamesParams defines the parameters for listing Loki label names
 type ListLokiLabelNamesParams struct {
 	DatasourceUID string `json:"datasourceUid" jsonschema:"required,description=The UID of the datasource to query"`
