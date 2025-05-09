@@ -33,10 +33,13 @@ type dsInnerQuery struct {
 
 type dsQueryResponse struct {
 	Results map[string]struct {
-		Frames []struct {
+		Error       string `json:"error,omitempty"`
+		ErrorSource string `json:"errorSource,omitempty"`
+		Status      int    `json:"status,omitempty"`
+		Frames      []struct {
 			Schema any             `json:"schema"`
 			Data   json.RawMessage `json:"data"`
-		} `json:"frames"`
+		} `json:"frames,omitempty"`
 	} `json:"results"`
 }
 
@@ -100,8 +103,27 @@ func (c *influxdbClient) query(ctx context.Context, sql string) ([]map[string]an
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		buf, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("Grafana returned %d: %s", resp.StatusCode, buf)
+		raw, _ := io.ReadAll(resp.Body)
+
+		var dj dsQueryResponse
+		if err := json.Unmarshal(raw, &dj); err == nil {
+			if ref, ok := dj.Results["A"]; ok && ref.Error != "" {
+				return []map[string]any{
+					{
+						"error":        ref.Error,
+						"error_source": ref.ErrorSource,
+						"status":       ref.Status,
+					},
+				}, nil
+			}
+		}
+
+		return []map[string]any{
+			{
+				"error":  strings.TrimSpace(string(raw)),
+				"status": resp.StatusCode,
+			},
+		}, nil
 	}
 
 	var parsed dsQueryResponse
@@ -109,7 +131,21 @@ func (c *influxdbClient) query(ctx context.Context, sql string) ([]map[string]an
 		return nil, fmt.Errorf("decode response JSON: %w", err)
 	}
 
-	ref := parsed.Results["A"]
+	ref, ok := parsed.Results["A"]
+	if !ok {
+		return nil, fmt.Errorf("no result for refId A")
+	}
+
+	if ref.Error != "" {
+		return []map[string]any{
+			{
+				"error":        ref.Error,
+				"error_source": ref.ErrorSource,
+				"status":       ref.Status,
+			},
+		}, nil
+	}
+
 	if len(ref.Frames) == 0 {
 		return []map[string]any{}, nil
 	}
